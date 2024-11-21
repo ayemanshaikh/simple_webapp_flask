@@ -1,0 +1,35 @@
+# This is a demo template
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy an EC2 instance in the ap-south-1 region
+
+Resources:
+  MyEC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: t2.micro                # Specify the instance type
+      ImageId: ami-0c55b159cbfafe1f0        # Amazon Linux 2 AMI ID for ap-south-1 region (check for latest)
+      KeyName: MyKeyPair                    # Replace with your EC2 key pair name
+      AvailabilityZone: ap-south-1a          # Specify the availability zone
+      SecurityGroupIds:
+        - Ref: MySecurityGroup              # Referring to the security group below
+      Tags:
+        - Key: Name
+          Value: MyEC2Instance
+          
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow SSH access to EC2 instance'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'                  # SSH port
+          ToPort: '22'
+          CidrIp: '0.0.0.0/0'             # Allow SSH from anywhere (for testing purposes)
+
+Outputs:
+  EC2InstanceId:
+    Description: 'The Instance ID of the EC2 instance'
+    Value: !Ref MyEC2Instance
+  PublicIP:
+    Description: 'Public IP address of the EC2 instance'
+    Value: !GetAtt MyEC2Instance.PublicIp
