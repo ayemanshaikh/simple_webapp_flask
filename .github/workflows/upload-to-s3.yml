@@ -25,6 +25,7 @@ jobs:
         aws-region: ap-south-1  
 
     # Upload file to S3
+    
     - name: Upload template to S3
       run: |
         aws s3 cp templates/cf-template.yml s3://my-artifact-storage/cf-artifacts
