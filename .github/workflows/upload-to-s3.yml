@@ -22,7 +22,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v3
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}  # The role ARN created above
-        aws-region: ap-south-1  # Replace with your AWS region
+        aws-region: ap-south-1  
 
     # Upload file to S3
     - name: Upload template to S3
