@@ -8,20 +8,24 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     # Checkout code
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     # Set up AWS credentials using OIDC
-    - name: Set up AWS credentials using OIDC
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v3
       with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ap-south-1
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}  # The role ARN created above
+        aws-region: ap-south-1  # Replace with your AWS region
 
     # Upload file to S3
     - name: Upload template to S3
       run: |
         aws s3 cp ./template/cf-template.yml s3://s3://my-artifact-storage/cf-artifacts/cf-template.yml
+
