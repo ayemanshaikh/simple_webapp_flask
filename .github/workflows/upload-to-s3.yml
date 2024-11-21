@@ -25,4 +25,4 @@ jobs:
       # Upload template to S3
       - name: Upload Template to S3
         run: |
-          aws s3 cp <path_to_your_template_file> s3://${{ secrets.S3_BUCKET_NAME }}/
+          aws s3 cp templates/* s3://${{ secrets.my-artifact-storage }}/
