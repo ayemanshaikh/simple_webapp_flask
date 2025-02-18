@@ -1,40 +1,38 @@
-name: Build and Push Docker Image to ACR
+name: Push Docker Image to ACR
 
 on:
   push:
     branches:
-      - main  # Trigger workflow on push to main branch
-  pull_request:
-    branches:
-      - main  # Trigger workflow on PR to main branch
+      - master  # Trigger workflow on push to master branch
 
 jobs:
-  build:
+  push-to-acr:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-      # Checkout repository code
-      - name: Checkout Repository
+      # Step 1: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
-      # Log in to Azure using the service principal
-      - name: Log in to Azure
+      # Step 2: Set up Azure login using Service Principal credentials
+      - name: Set up Azure login
         uses: azure/login@v1
         with:
-          creds: '{"clientId": "${{ secrets.AZURE_CLIENT_ID }}", "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}", "tenantId": "${{ secrets.AZURE_TENANT_ID }}", "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}"}'
-
-      # Log in to Azure Container Registry
-      - name: Log in to ACR
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          subcription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Step 3: Log in to Azure Container Registry (ACR)
+      - name: Log in to Azure Container Registry
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
-      # Build Docker image
-      - name: Build Docker Image
+      # Step 4: Build, Tag, and Push Docker Image to ACR
+      - name: Build, Tag, and Push Docker Image
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }} .
-
-      # Push Docker image to ACR
-      - name: Push Docker Image to ACR
-        run: |
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}
-
+          docker build -t dockerized_image_demo .
+          docker tag dockerized_image_demo:latest ${{ secrets.ACR_NAME }}.azurecr.io/ayeman/poc:latest
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/ayeman/poc:latest
