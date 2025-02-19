@@ -1,28 +1,40 @@
-name: Azure OIDC Login Test
+name: Push Docker Image to ACR
 
 on:
   push:
     branches:
-      - master  # Change to 'master' if needed
+      - master
 
 permissions:
-  id-token: write  # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
-  deploy:
+  push-to-acr:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Login to Azure using OIDC
+      - name: Azure Login (OIDC)
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          auth-type: IDENTITY
+          allow-no-subscriptions: true  # Prevents "No subscriptions found" error
 
-      - name: Verify login
-        run: az account show
+      - name: Set Subscription
+        run: az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build, Tag, and Push Docker Image
+        run: |
+          IMAGE_NAME="${{ secrets.ACR_NAME }}.azurecr.io/dockerized_image_demo"
+          docker build -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:latest
