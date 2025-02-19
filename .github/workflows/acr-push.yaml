@@ -1,3 +1,10 @@
+name: Azure OIDC Login Test
+
+on:
+  push:
+    branches:
+      - main  # Change to 'master' if needed
+
 permissions:
   id-token: write  # Required for OIDC
   contents: read
