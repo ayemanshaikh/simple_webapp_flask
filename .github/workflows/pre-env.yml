@@ -1,131 +1,64 @@
-name: Build and Deploy Docker Image
+name: PR Preview Deployment
 
 on:
-  workflow_call:
-    inputs:
-      checkout-ref:
-        description: 'A git reference to checkout before running the workflow'
-        default: ${{ github.head_ref }}
-        required: true
-        type: string
   pull_request:
-    branches:
-      - main
-      - master
-      - stable
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+
+env:
+  CLUSTER_NAME: "lockthreat-preview-environment"
+  RESOURCE_GROUP: "lockthreat-preview-environment"
+  ACR_NAME: "lockthreat"
+  HELM_RELEASE_NAME: "lockthreat-chart"
 
 jobs:
-  build-docker-image:
-    name: Build Docker Image
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-tags: true
-          fetch-depth: 0
-          ref: ${{ inputs.checkout-ref }}
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Determine Version and Tags
-        id: determine_tags
-        shell: bash
-        run: |
-          VERSION="$(cat VERSION)"
-          TAGS="type=ref,event=branch
-          type=raw,value=${VERSION}"
-
-          if [ "${GITHUB_REF}" = "refs/heads/master" ]; then
-            echo "FLAVOR=true" >> $GITHUB_OUTPUT
-          elif [ "${GITHUB_REF}" = "refs/heads/stable" ]; then
-            TAGS="${TAGS}
-            type=raw,value=doh"
-            echo "FLAVOR=false" >> $GITHUB_OUTPUT
-          else
-            echo "FLAVOR=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "TAGS<<EOF" >> $GITHUB_OUTPUT
-          echo "${TAGS}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Login to ACR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.AZURE_ACR_NAME }}.azurecr.io
-          username: ${{ vars.AZURE_ACR_SERVICE_PRINCIPAL_ID }}
-          password: ${{ secrets.AZURE_ACR_SERVICE_PRINCIPAL_PASSWORD }}
-
-      - name: Build and push
-        id: build-and-push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          sbom: true
-          tags: ${{ steps.determine_tags.outputs.TAGS }}
-          platforms: linux/amd64
-
-  deploy-to-environment:
-    name: Deploy Docker Image to Azure
-    needs: build-docker-image
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Log in to Azure
+      - name: Set up Azure CLI
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Generate Unique Web App Name
-        id: webapp
+      - name: Get AKS Credentials
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            BRANCH_NAME=$(echo "${{ github.head_ref }}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-')
-            echo "WEBAPP_NAME=lockthreat-preview-${BRANCH_NAME}" >> $GITHUB_ENV
-          else
-            echo "WEBAPP_NAME=${{ secrets.AZURE_TEST_WEBAPP_NAME }}" >> $GITHUB_ENV
-          fi
+          az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
 
-      - name: Create Azure Web App if Needed
+      - name: Create Namespace
         run: |
-          EXISTS=$(az webapp list --query "[?name=='${{ env.WEBAPP_NAME }}'] | length(@)")
-          if [ "$EXISTS" == "0" ]; then
-            az webapp create \
-              --resource-group MyResourceGroup \
-              --plan MyAppServicePlan \
-              --name ${{ env.WEBAPP_NAME }} \
-              --deployment-container-image-name ${{ vars.AZURE_ACR_NAME }}.azurecr.io/lockthreat:latest
-          fi
+          PR_NAMESPACE="pr-${{ github.event.pull_request.number }}"
+          kubectl create namespace $PR_NAMESPACE || echo "Namespace already exists"
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.WEBAPP_NAME }}
-          images: ${{ vars.AZURE_ACR_NAME }}.azurecr.io/${{ vars.AZURE_ACR_NAME }}/lockthreat:latest
-
-      - name: Verify Deployment
+      - name: Deploy Application using Helm
         run: |
-          sleep 20
-          curl -f https://${{ env.WEBAPP_NAME }}.azurewebsites.net/up || exit 1
+          PR_NAMESPACE="pr-${{ github.event.pull_request.number }}"
+          helm upgrade --install $HELM_RELEASE_NAME-$PR_NAMESPACE ./helm/lockthreat-chart \
+            --namespace $PR_NAMESPACE \
+            --set ingress.host="pr-${{ github.event.pull_request.number }}.example.com" \
+            --set image.repository="$ACR_NAME.azurecr.io/lockthreat-app" \
+            --set image.tag="${{ github.sha }}"
 
   cleanup-preview:
-    name: Cleanup Preview Environment
-    if: github.event.pull_request.merged == true || github.event.pull_request.state == 'closed'
-    runs-on: ubuntu-22.04
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
     steps:
-      - name: Log in to Azure
+      - name: Set up Azure CLI
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Delete Azure Web App
+      - name: Get AKS Credentials
         run: |
-          BRANCH_NAME=$(echo "${{ github.head_ref }}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-')
-          az webapp delete --name lockthreat-preview-${BRANCH_NAME} --resource-group MyResourceGroup
+          az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
+
+      - name: Delete Namespace
+        run: |
+          PR_NAMESPACE="pr-${{ github.event.pull_request.number }}"
+          kubectl delete namespace $PR_NAMESPACE --ignore-not-found=true
